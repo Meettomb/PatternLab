@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Wallpaper Collage Studio</title>
+<title>PatternLab</title>
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -17,12 +17,12 @@
   </div>
 </div>
 <header>
-  <h1>Wallpaper Collage Studio</h1>
-  <p>Turn your photos into a randomly arranged laptop wallpaper. Everything runs locally in your browser.</p>
+  <h1>PatternLab</h1>
+  <p>Turn your photos into a randomly arranged laptop Image. Everything runs locally in your browser.</p>
 </header>
 <main class="app">
   <aside class="panel">
-    <h2>Build your wallpaper</h2>
+    <h2>Build your Image</h2>
     <div class="field">
       <label for="files">Choose multiple images</label>
       <input id="files" type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif,image/bmp,image/tiff,.jpg,.jpeg,.png,.webp,.gif,.bmp,.tif,.tiff,.heic,.heif">
@@ -30,7 +30,7 @@
       <p class="hint" id="uploadLimits">Upload limits: maximum 50 images, 30 MB per image, 1,500 MB combined.</p>
     </div>
     <div class="field">
-      <label for="ratio">Wallpaper / screen ratio</label>
+      <label for="ratio">Image / screen ratio</label>
       <select id="ratio">
         <option value="16:9" selected>16:9 — most laptops (1920 × 1080)</option>
         <option value="16:10">16:10 — many modern laptops (1920 × 1200)</option>
@@ -98,11 +98,11 @@
       <button id="clear" class="secondary" disabled>Remove all photos</button>
     </div>
     <div id="status" class="status" role="status"></div>
-    <p class="hint">Tip: Choose the ratio closest to your display resolution. The downloaded PNG is rendered at full wallpaper dimensions.</p>
+    <p class="hint">Tip: Choose the ratio closest to your display resolution. The downloaded PNG is rendered at full Image dimensions.</p>
   </aside>
   <section class="stage">
     <div class="stage-top">
-      <strong>Wallpaper preview</strong>
+      <strong>Image preview</strong>
       <span id="dimensions">1920 × 1080 px · 16:9</span>
     </div>
     <div class="canvas-wrap" id="canvasWrap">
