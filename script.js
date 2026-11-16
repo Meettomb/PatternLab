@@ -1,8 +1,17 @@
 (() => {
   const $ = id => document.getElementById(id);
   const filesInput = $('files'), canvas = $('canvas'), ctx = canvas.getContext('2d');
-  let photos = [], generation = 0, currentLayout = null;
-  const ratios = { '16:9': [16, 9, 1920, 1080], '16:10': [16, 10, 1920, 1200], '3:2': [3, 2, 2160, 1440], '21:9': [21, 9, 2560, 1080] };
+  let photos = [], generation = 0, currentLayout = null, currentBackgroundPhoto = null;
+  const ratios = {
+    '16:9': [16, 9, 1920, 1080],
+    '16:10': [16, 10, 1920, 1200],
+    '3:2': [3, 2, 2160, 1440],
+    '21:9': [21, 9, 2560, 1080],
+    '9:16': [9, 16, 1080, 1920],
+    '9:19.5': [9, 19.5, 1170, 2532],
+    '9:20': [9, 20, 1080, 2400],
+    '9:21': [9, 21, 1080, 2520]
+  };
 
   function size() {
     if ($('ratio').value === 'custom') {
@@ -44,6 +53,12 @@
     (colors.length ? colors : ['#172554', '#4f46e5', '#ec4899']).forEach((c, i, a) => grad.addColorStop(a.length === 1 ? 0 : i / (a.length - 1), c));
     ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
   }
+  function paintBackgroundPhoto(photo, W, H) {
+    if (!photo) return;
+    const scale = Math.max(W / photo.img.naturalWidth, H / photo.img.naturalHeight);
+    const width = photo.img.naturalWidth * scale, height = photo.img.naturalHeight * scale;
+    ctx.drawImage(photo.img, (W - width) / 2, (H - height) / 2, width, height);
+  }
 
   function buildGradientColorInputs() {
     const count = +$('gradientColorCount').value || 3;
@@ -60,11 +75,16 @@
   function render(regenerate = false) {
     const [W, H] = size();
     const previousW = canvas.width, previousH = canvas.height;
+    const ratio = W >= H
+      ? `${Math.round(W / H * 100) / 100}:1`
+      : `1:${Math.round(H / W * 100) / 100}`;
+    $('dimensions').textContent = `${W} × ${H} px · ${ratio}`;
     const settingsOnly = photos.length > 0 && !regenerate && currentLayout && previousW === W && previousH === H;
     if (settingsOnly) {
-      // Keep the existing randomized photo positions; update only the background color.
+      // Keep the existing randomized photo positions while repainting the background.
       canvas.hidden = false; $('empty').hidden = true;
       paintBackground(W, H);
+      if ($('backgroundFill').value === 'image') paintBackgroundPhoto(currentBackgroundPhoto, W, H);
       if (currentLayout && currentLayout.length) {
         currentLayout.forEach(item => drawCover(item.p.img, item.x, item.y, item.w, item.h, item.angle, item.polaroid));
       }
@@ -73,12 +93,33 @@
       return;
     }
     canvas.width = W; canvas.height = H;
-    $('dimensions').textContent = `${W} × ${H} px · ${Math.round(W / H * 100) / 100}:1`;
     paintBackground(W, H);
-    if (!photos.length) { currentLayout = null; canvas.hidden = true; $('empty').hidden = false; updateButtons(); return; }
+    if (!photos.length) { currentLayout = null; currentBackgroundPhoto = null; canvas.hidden = true; $('empty').hidden = false; updateButtons(); return; }
     canvas.hidden = false; $('empty').hidden = true;
     currentLayout = [];
     const selected = shuffleArray(photos).slice(0, clamp(+$('count').value || 30, 1, 100));
+    if (selected.length === 1) {
+      const photo = selected[0];
+      currentBackgroundPhoto = $('backgroundFill').value === 'image' ? photo : null;
+      paintBackgroundPhoto(currentBackgroundPhoto, W, H);
+      const scale = Math.min(W * 0.5 / photo.img.naturalWidth, H * 0.5 / photo.img.naturalHeight);
+      const width = photo.img.naturalWidth * scale, height = photo.img.naturalHeight * scale;
+      const centeredPhoto = { p: photo, x: (W - width) / 2, y: (H - height) / 2, w: width, h: height, angle: 0, polaroid: false };
+      currentLayout.push(centeredPhoto);
+      drawCover(photo.img, centeredPhoto.x, centeredPhoto.y, width, height);
+      $('status').textContent = photos.length === 1
+        ? `Showing your image ${currentBackgroundPhoto ? 'as the full background and ' : ''}centered. Select at least 2 images to enable Randomize.`
+        : `Showing 1 image ${currentBackgroundPhoto ? 'as the full background and ' : ''}centered. Increase the maximum photos to at least 2 to enable Randomize.`;
+      updateButtons();
+      return;
+    }
+    if ($('backgroundFill').value === 'image') {
+      const candidates = shuffleArray(selected);
+      currentBackgroundPhoto = candidates.find(photo => photo !== currentBackgroundPhoto) || candidates[0];
+    } else {
+      currentBackgroundPhoto = null;
+    }
+    paintBackgroundPhoto(currentBackgroundPhoto, W, H);
     const density = +$('density').value / 100, style = $('layout').value;
     if (style === 'grid') {
       // Higher size means fewer columns and larger tiles.
@@ -95,6 +136,7 @@
       });
     } else {
       const polaroid = style === 'polaroid';
+      const portraitCanvas = H > W;
       const randomized = shuffleArray(selected);
       const placed = [];
       const marginPct = Number($('borderSpacing').value) / 100;
@@ -103,7 +145,7 @@
 
       // Edge-to-edge mode uses recorded background-cover photos, drawn first.
       // Recording them prevents gaps from appearing when settings repaint the same layout.
-      if (marginPct === 0 && randomized.length) {
+      if (marginPct === 0 && randomized.length && !currentBackgroundPhoto) {
         const edgeH = H * 0.22, edgeW = W * 0.18;
         const strips = [
           { p: randomized[0], x: 0, y: 0, w: W, h: edgeH },
@@ -121,11 +163,16 @@
         const aspect = p.img.naturalWidth / p.img.naturalHeight;
         let scale = (0.10 + density * 0.82) * rand(0.68, 1.18);
         if (randomized.length > 12) scale *= Math.max(0.48, Math.sqrt(12 / randomized.length));
-        let w = Math.min(Math.min(innerW, innerH) * scale * Math.sqrt(aspect), innerW * 0.48);
+        let w = Math.min(Math.min(innerW, innerH) * scale * Math.sqrt(aspect), innerW * (portraitCanvas ? 0.64 : 0.48));
         let h = w / aspect;
-        if (h > innerH * 0.52) { h = innerH * 0.52; w = h * aspect; }
+        if (h > innerH * (portraitCanvas ? 0.60 : 0.52)) { h = innerH * (portraitCanvas ? 0.60 : 0.52); w = h * aspect; }
         if (polaroid) { w *= 1.06; h *= 1.10; }
-        w = Math.min(w, innerW * 0.50); h = Math.min(h, innerH * 0.54);
+        if (portraitCanvas) {
+          const fit = Math.min(1, innerW * 0.68 / w, innerH * 0.62 / h);
+          w *= fit; h *= fit;
+        } else {
+          w = Math.min(w, innerW * 0.50); h = Math.min(h, innerH * 0.54);
+        }
 
         let best = null, bestOverlap = Infinity;
         for (let attempt = 0; attempt < 90; attempt++) {
@@ -155,7 +202,10 @@
     updateButtons();
   }
   function updateButtons() {
-    $('shuffle').disabled = !photos.length; $('download').disabled = !photos.length; $('clear').disabled = !photos.length;
+    const maxPhotos = clamp(+$('count').value || 30, 1, 100);
+    $('shuffle').disabled = photos.length < 2 || maxPhotos < 2;
+    $('download').disabled = !photos.length;
+    $('clear').disabled = !photos.length;
   }
   function updateThumbs() {
     $('thumbs').innerHTML = '';
@@ -163,7 +213,7 @@
       const box = document.createElement('div'); box.className = 'thumb';
       const img = document.createElement('img'); img.src = p.url; img.alt = p.file.name; img.loading = 'lazy'; img.decoding = 'async'; img.fetchPriority = 'low';
       const btn = document.createElement('button'); btn.textContent = '×'; btn.title = 'Remove ' + p.file.name; btn.setAttribute('aria-label', 'Remove ' + p.file.name);
-      btn.onclick = () => { URL.revokeObjectURL(p.url); photos.splice(i, 1); updateThumbs(); render(); updateUploadLimits(); };
+      btn.onclick = () => { URL.revokeObjectURL(p.url); photos.splice(i, 1); updateThumbs(); render(true); updateUploadLimits(); };
       box.append(img, btn); $('thumbs').append(box);
     });
   }
@@ -283,9 +333,12 @@
       await new Promise(resolve => setTimeout(resolve, 0));
     }
     setLoading(false);
-    updateThumbs(); render(); updateUploadLimits();
+    updateThumbs(); render(true); updateUploadLimits();
     const summary = `Loaded ${loadedNow} image${loadedNow === 1 ? '' : 's'}${cancelRequested ? ' before cancellation' : ''}.`;
-    $('status').textContent = failures.length ? `${summary} ${failures.length} issue(s): ${failures.slice(0, 2).join(' ')}` : summary;
+    const randomizeNotice = photos.length === 1 ? ' Select at least 2 images to enable Randomize.' : '';
+    $('status').textContent = failures.length
+      ? `${summary}${randomizeNotice} ${failures.length} issue(s): ${failures.slice(0, 2).join(' ')}`
+      : `${summary}${randomizeNotice}`;
     filesInput.value = '';
   });
   $('shuffle').onclick = () => { generation++; render(true); };
@@ -297,19 +350,32 @@
   $('ratio').onchange = () => { $('customFields').hidden = $('ratio').value !== 'custom'; render(true); };
   buildGradientColorInputs();
   updateUploadLimits();
-  $('gradientColorCount').addEventListener('change', () => { buildGradientColorInputs(); render(false); });
-  ['bg', 'gradientAngle', 'bgMode'].forEach(id => $(id).addEventListener('input', () => {
-    $('gradientFields').hidden = $('bgMode').value !== 'gradient';
-    $('solidColorField').hidden = $('bgMode').value === 'gradient';
+  const updateBackgroundControls = () => {
+    const useColor = $('backgroundFill').value === 'color';
+    $('colorBackgroundControls').hidden = !useColor;
+    $('gradientFields').hidden = !useColor || $('bgMode').value !== 'gradient';
+    $('solidColorField').hidden = !useColor || $('bgMode').value === 'gradient';
     $('gradientAngleValue').textContent = $('gradientAngle').value + '°';
-    render(false);
-  }));
+  };
+  updateBackgroundControls();
+  $('backgroundFill').addEventListener('change', () => {
+    updateBackgroundControls();
+    render(true);
+  });
+  $('gradientColorCount').addEventListener('change', () => { buildGradientColorInputs(); render(false); });
+  ['bg', 'gradientAngle'].forEach(id => $(id).addEventListener('input', () => render(false)));
+  $('gradientAngle').addEventListener('input', () => { $('gradientAngleValue').textContent = $('gradientAngle').value + '°'; });
   $('bgMode').addEventListener('change', () => {
-    $('gradientFields').hidden = $('bgMode').value !== 'gradient';
-    $('solidColorField').hidden = $('bgMode').value === 'gradient';
+    updateBackgroundControls();
     render(false);
   });
-  ['customW', 'customH', 'layout', 'count'].forEach(id => $(id).addEventListener('input', render));
+  ['customW', 'customH', 'layout'].forEach(id => $(id).addEventListener('input', render));
+  $('count').addEventListener('input', () => {
+    const maxPhotos = clamp(+$('count').value || 30, 1, 100);
+    if (maxPhotos < 2) render(true);
+    else updateButtons();
+  });
+  $('count').addEventListener('change', () => render(true));
   $('borderSpacing').addEventListener('input', () => {
     $('borderSpacingValue').textContent = $('borderSpacing').value + '%';
     render();
